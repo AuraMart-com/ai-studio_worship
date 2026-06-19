@@ -32,6 +32,7 @@ let wizardIsPlaying = false;
 let wizardCurrentTime = 0;
 let wizardDuration = 120;
 let wizardAudioTag = new Audio();
+let wizardMusicSpeed = 'normal';
 let wizardIntervalId = null;
 
 // Web Audio API Synthesizer Nodes
@@ -166,10 +167,147 @@ function parseLyricLine(textLine, defaultIdx) {
   };
 }
 
+// Shortcut function next to the "Add New Song" lyric text area
+function insertMusicBreakShortcut() {
+  const textarea = document.getElementById('form-raw-lyrics');
+  if (!textarea) return;
+  const start = textarea.selectionStart;
+  const end = textarea.selectionEnd;
+  const text = textarea.value;
+  const word = "music";
+  
+  const before = text.substring(0, start);
+  const after = text.substring(end);
+  
+  let insertVal = word;
+  if (start > 0 && !before.endsWith('\n')) {
+    insertVal = '\n' + insertVal;
+  }
+  if (!after.startsWith('\n')) {
+    insertVal = insertVal + '\n';
+  }
+  
+  textarea.value = before + insertVal + after;
+  textarea.focus();
+  const newCursorPos = start + insertVal.length;
+  textarea.setSelectionRange(newCursorPos, newCursorPos);
+}
+
+// Extract music keyword structure e.g. "music(clap...)"
+function getMusicBreakInfo(text) {
+  if (!text) return { isMusic: false, text: "" };
+  const trimmed = text.trim();
+  const lower = trimmed.toLowerCase();
+  
+  if (lower === "music") {
+    return { isMusic: true, text: "" };
+  }
+  
+  const match = trimmed.match(/^music\s*\(([^)]+)\)$/i);
+  if (match) {
+    return { isMusic: true, text: match[1].trim().toUpperCase() };
+  }
+  
+  if (lower.startsWith("music")) {
+    const parenMatch = trimmed.match(/\(([^)]+)\)/);
+    if (parenMatch) {
+      return { isMusic: true, text: parenMatch[1].trim().toUpperCase() };
+    }
+    const remaining = trimmed.substring(5).replace(/^[:\s\-\–\(\)]+/, '').replace(/\)$/, '').trim();
+    if (remaining) {
+      return { isMusic: true, text: remaining.toUpperCase() };
+    }
+    return { isMusic: true, text: "" };
+  }
+  
+  return { isMusic: false, text: "" };
+}
+
+// Format lyrics beautifully for view display (remove music(...) wrappers)
+function formatLyricDisplay(text, isPrevOrNext = false) {
+  if (!text) return '• • •';
+  if (text === '• • •') return '• • •';
+  const musicInfo = getMusicBreakInfo(text);
+  if (musicInfo.isMusic) {
+    if (musicInfo.text) {
+      return musicInfo.text; // e.g. "CLAP..."
+    } else {
+      return isPrevOrNext ? 'INSTRUMENTAL' : '';
+    }
+  }
+  return text;
+}
+
+function updateWizardMusicSpeedUI() {
+  const labelEl = document.getElementById('label-music-speed');
+  if (labelEl) {
+    if (wizardMusicSpeed === 'slow') {
+      labelEl.textContent = 'Speed: Slow';
+    } else if (wizardMusicSpeed === 'fast') {
+      labelEl.textContent = 'Speed: Fast';
+    } else {
+      labelEl.textContent = 'Speed: Normal';
+    }
+  }
+}
+
+function cycleWizardMusicSpeed() {
+  if (wizardMusicSpeed === 'normal') {
+    wizardMusicSpeed = 'fast';
+  } else if (wizardMusicSpeed === 'fast') {
+    wizardMusicSpeed = 'slow';
+  } else {
+    wizardMusicSpeed = 'normal';
+  }
+  updateWizardMusicSpeedUI();
+}
+
+// Audio element timeupdate event listener logic for music breaks
+function setupAudioTimeUpdateListener() {
+  const audioTag = document.getElementById('player-audio-source');
+  if (audioTag) {
+    audioTag.addEventListener('timeupdate', () => {
+      const lyrics = (playingSong && playingSong.lyrics) || [];
+      const activeLine = lyrics[activePrompterIndex];
+      const lyricTextDisplay = document.getElementById("lyric-text-display");
+      const instVisualizer = document.getElementById("instrumental-visualizer");
+      const labelEl = document.getElementById("instrumental-label");
+      if (lyricTextDisplay && instVisualizer) {
+        const musicInfo = activeLine ? getMusicBreakInfo(activeLine.text) : { isMusic: false, text: "" };
+        if (musicInfo.isMusic) {
+          lyricTextDisplay.classList.add("hidden");
+          instVisualizer.classList.remove("hidden");
+          if (labelEl) {
+            if (musicInfo.text) {
+              labelEl.textContent = musicInfo.text;
+              labelEl.classList.remove("hidden");
+            } else {
+              labelEl.textContent = "";
+              labelEl.classList.add("hidden");
+            }
+          }
+          const speed = playingSong ? (playingSong.musicSpeed || 'normal') : 'normal';
+          let animDuration = '1.0s';
+          if (speed === 'slow') animDuration = '1.8s';
+          if (speed === 'fast') animDuration = '0.5s';
+          const bars = instVisualizer.querySelectorAll("div");
+          bars.forEach(bar => {
+            bar.style.animationDuration = animDuration;
+          });
+        } else {
+          lyricTextDisplay.classList.remove("hidden");
+          instVisualizer.classList.add("hidden");
+        }
+      }
+    });
+  }
+}
+
 // Initializer
 window.onload = function() {
   loadDatabase();
   lucide.createIcons();
+  setupAudioTimeUpdateListener();
 };
 
 const OperationType = {
@@ -372,6 +510,17 @@ function switchView(viewName) {
 
   // Stop any audio playing
   stopAllWorshipAudio();
+
+  if (viewName === 'player') {
+    setTimeout(() => {
+      window.focus();
+      document.body.focus();
+      const playerEl = document.getElementById('view-player');
+      if (playerEl) {
+        playerEl.focus();
+      }
+    }, 80);
+  }
 }
 
 function stopAllWorshipAudio() {
@@ -818,6 +967,9 @@ function initNewSongWizard() {
   document.getElementById('wizard-file-status-text').textContent = 'Browse local MP3 / WAV';
   document.getElementById('wizard-file-status-text').className = 'text-[11px] text-neutral-400 block truncate';
   
+  wizardMusicSpeed = 'normal';
+  updateWizardMusicSpeedUI();
+  
   toggleWizardAudioSource(true);
   switchView('wizard');
   switchOffsetWorkspace(false); // config phase first
@@ -835,6 +987,9 @@ function loadSongIntoWizard(id) {
   document.getElementById('form-song-key').value = song.key || 'G Major';
   document.getElementById('form-song-tempo').value = song.tempo || 72;
   document.getElementById('form-song-audio-path').value = song.audioUrl || '';
+  
+  wizardMusicSpeed = song.musicSpeed || 'normal';
+  updateWizardMusicSpeedUI();
   
   // Extract raw text lines
   const songLyrics = song.lyrics || song.lines || [];
@@ -1438,6 +1593,7 @@ async function saveWorshipTrackToDatabase() {
       isPreloaded: false,
       lyrics: sortedLyrics,
       lines: sortedLyrics,
+      musicSpeed: wizardMusicSpeed,
       updatedAt: Date.now()
     };
 
@@ -1500,6 +1656,7 @@ async function startPerformanceSession(id) {
   const song = databaseSongs.find(s => s.id === id);
   if (!song) return;
 
+  const songLyrics = song.lyrics || [];
   playingSong = song;
   playerIsPlaying = false;
   playerCurrentTime = 0;
@@ -1773,16 +1930,49 @@ function updatePrompterTextUI() {
     nextLine = activePrompterIndex < lyrics.length - 1 ? lyrics[activePrompterIndex + 1].text : '• • •';
   }
 
-  if (prevEl) prevEl.textContent = prevLine || '• • •';
+  if (prevEl) prevEl.textContent = formatLyricDisplay(prevLine, true);
   
-  activeEl.textContent = activeLine || '[Get ready]';
+  activeEl.textContent = formatLyricDisplay(activeLine, false) || '[Get ready]';
   if (activeLine.startsWith('[')) {
     activeEl.className = "text-xl sm:text-2xl md:text-3.5xl font-bold tracking-normal italic text-neutral-500 filter drop-shadow-none transition duration-150";
   } else {
     activeEl.className = "text-3xl sm:text-4xl md:text-5xl lg:text-6.5xl font-black text-emerald-400 tracking-tight leading-normal filter neon-text-glow transition duration-150 transform scale-102";
   }
 
-  if (nextEl) nextEl.textContent = nextLine || '• • •';
+  if (nextEl) nextEl.textContent = formatLyricDisplay(nextLine, true);
+
+  // Toggle Instrumental visualizer for "music" break slots
+  const activeLineObj = lyrics[activePrompterIndex];
+  const displayEl = document.getElementById("lyric-text-display");
+  const vizEl = document.getElementById("instrumental-visualizer");
+  const labelEl = document.getElementById("instrumental-label");
+  if (displayEl && vizEl) {
+    const musicInfo = activeLineObj ? getMusicBreakInfo(activeLineObj.text) : { isMusic: false, text: "" };
+    if (musicInfo.isMusic) {
+      displayEl.classList.add("hidden");
+      vizEl.classList.remove("hidden");
+      if (labelEl) {
+        if (musicInfo.text) {
+          labelEl.textContent = musicInfo.text;
+          labelEl.classList.remove("hidden");
+        } else {
+          labelEl.textContent = "";
+          labelEl.classList.add("hidden");
+        }
+      }
+      const speed = playingSong ? (playingSong.musicSpeed || 'normal') : 'normal';
+      let animDuration = '1.0s';
+      if (speed === 'slow') animDuration = '1.8s';
+      if (speed === 'fast') animDuration = '0.5s';
+      const bars = vizEl.querySelectorAll("div");
+      bars.forEach(bar => {
+        bar.style.animationDuration = animDuration;
+      });
+    } else {
+      displayEl.classList.remove("hidden");
+      vizEl.classList.add("hidden");
+    }
+  }
 }
 
 function triggerNeuralVocalGuideAssistant() {
@@ -2154,6 +2344,8 @@ window.updateWizardItemText = updateWizardItemText;
 window.deleteWizardLine = deleteWizardLine;
 window.seekWizardTrackTo = seekWizardTrackTo;
 window.handleWizardTimelineClick = handleWizardTimelineClick;
+window.insertMusicBreakShortcut = insertMusicBreakShortcut;
+window.cycleWizardMusicSpeed = cycleWizardMusicSpeed;
 
 function detectDeviceMode() {
   const isMobile = window.innerWidth <= 768;
