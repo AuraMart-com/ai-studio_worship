@@ -86,7 +86,7 @@ function initOfflineIndexedDB() {
     };
     
     request.onerror = (e) => {
-      console.error("IndexedDB initialization failed:", e.target.error);
+      console.error("IndexedDB initialization failed:", e.target.error ? (e.target.error.message || String(e.target.error)) : "");
       reject(e.target.error);
     };
   });
@@ -353,7 +353,7 @@ function handleFirestoreError(error, operationType, path) {
     operationType: operationType,
     path: path
   };
-  console.error('Firestore Error Info: ', errInfo, error);
+  console.error('Firestore Error Info: ', JSON.stringify(errInfo));
   throw new Error(errMsg);
 }
 
@@ -421,7 +421,7 @@ async function loadDatabase() {
               const dRef = window.fStore.doc(window.db, "worship_songs", s.id);
               await window.fStore.setDoc(dRef, seedPayload);
             } catch (err) {
-              console.error("Failed to seed default: ", s.id, err);
+              console.error("Failed to seed default: ", s.id, err ? (err.message || String(err)) : "");
             }
           }
           return;
@@ -435,7 +435,7 @@ async function loadDatabase() {
         await renderSongsGrid();
         hideDbErrorBanner();
       }, (error) => {
-        console.error("Firestore real-time subscription error:", error);
+        console.error("Firestore real-time subscription error:", error ? (error.message || String(error)) : "");
         showDbErrorBanner("Cloud connection error: " + error.message);
         handleFirestoreError(error, OperationType.GET, "worship_songs");
       });
@@ -504,7 +504,7 @@ async function resetAllToDefault() {
       // Re-trigger loadDatabase to perform auto seeding
       await loadDatabase();
     } catch(e) {
-      console.error(e);
+      console.error(e ? (e.message || String(e)) : "");
       alert("Reset failed: " + e.message);
     }
   }
@@ -910,7 +910,7 @@ async function clearLocalCache(songId) {
       await deleteAudioFromOfflineCache(songId);
       await renderSongsGrid();
     } catch (e) {
-      console.error(e);
+      console.error(e ? (e.message || String(e)) : "");
       alert("Failed to clear cache: " + e.message);
     }
   }
@@ -948,7 +948,7 @@ async function deleteSongFromDatabase(id) {
         }
       }
     } catch (e) {
-      console.error(e);
+      console.error(e ? (e.message || String(e)) : "");
       alert("Failed to delete song: " + e.message);
     }
   }
@@ -1663,12 +1663,12 @@ async function saveWorshipTrackToDatabase() {
           handleFirestoreError(err, OperationType.WRITE, `worship_songs/${docId}`);
         }
       } catch (err) {
-        console.error("Firestore background sync failed:", err);
+        console.error("Firestore background sync failed:", err ? (err.message || String(err)) : "");
       }
     })();
 
   } catch (error) {
-    console.error("Save failed:", error);
+    console.error("Save failed:", error ? (error.message || String(error)) : "");
     alert("Worship Saved failed: " + error.message);
   } finally {
     if (saveBtn) {
@@ -2461,7 +2461,7 @@ async function createNewScheduledWorship() {
     // Return to show list tab
     switchLiveTab('show');
   } catch (err) {
-    console.error("Error creating scheduled worship:", err);
+    console.error("Error creating scheduled worship:", err ? (err.message || String(err)) : "");
     alert("Failed scheduling worship to database: " + err.message);
   }
 }
@@ -2634,10 +2634,10 @@ function renderScheduledWorshipsList() {
 async function deleteScheduledWorship(worshipId) {
   if (!window.db || !window.fStore) return;
   
-  const confirmed = await showCustomConfirm(
+  const confirmed = await showConfirm(
     "End Worship Session",
     "Are you sure you want to delete this scheduled worship? This will disconnect all followers instantly.",
-    "End Session"
+    { confirmText: "End Session", isDanger: true }
   );
   if (!confirmed) return;
 
@@ -2645,7 +2645,7 @@ async function deleteScheduledWorship(worshipId) {
   try {
     await window.fStore.deleteDoc(docRef);
   } catch(e) {
-    console.error("Failed to delete scheduled worship:", e);
+    console.error("Failed to delete scheduled worship:", e ? (e.message || String(e)) : "");
     alert("Failed deleting: " + e.message);
   }
 }
@@ -2829,7 +2829,7 @@ async function testFirestoreConnection() {
       await window.fStore.getDoc(testRef);
       console.log("Firestore connection test passed.");
     } catch(err) {
-      console.warn("Firestore connection test failed: ", err);
+      console.warn("Firestore connection test failed: ", err ? (err.message || String(err)) : "");
     }
   }
 }
@@ -2867,6 +2867,7 @@ window.loadSongIntoWizard = loadSongIntoWizard;
 window.startPerformanceSession = startPerformanceSession;
 window.downloadSongToCache = downloadSongToCache;
 window.showConfirm = showConfirm;
+window.showCustomConfirm = showConfirm;
 window.closeCustomConfirm = closeCustomConfirm;
 window.setWizardVolume = setWizardVolume;
 window.addNewWizardLine = addNewWizardLine;
